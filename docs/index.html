@@ -47,6 +47,13 @@
     .nav-link { display: block; border: 1px solid transparent; border-radius: 8px; color: var(--muted); text-decoration: none; padding: .55rem .7rem; font-size: .88rem; }
     .nav-link:hover { background: rgba(121, 169, 255, .08); color: var(--text); }
     .nav-link.active { border-color: var(--accent-soft); background: var(--accent-soft); color: var(--text); font-weight: 650; }
+    .app-nav-external { display: flex; flex-direction: column; margin-top: auto; padding-top: .75rem; border-top: 1px solid rgba(155, 168, 196, .16); position: sticky; bottom: 0; background: rgba(19, 27, 49, .94); }
+    .nav-telegram { display: flex; align-items: center; gap: .45rem; border: 1px solid rgba(34, 158, 217, .35); border-radius: 8px; background: rgba(34, 158, 217, .1); color: #7fd0f5; text-decoration: none; padding: .5rem .6rem; font-size: .86rem; }
+    .nav-telegram:hover { border-color: rgba(34, 158, 217, .6); background: rgba(34, 158, 217, .18); color: #b7e6fb; }
+    .nav-telegram-icon { flex: 0 0 auto; display: block; }
+    .nav-telegram-label { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nav-telegram-badge { flex: 0 0 auto; border-radius: 999px; background: #229ED9; color: #06202e; font-size: .58rem; font-weight: 800; letter-spacing: .08em; padding: .1rem .34rem; }
+    .nav-telegram-arrow { flex: 0 0 auto; color: #7fd0f5; font-size: .8rem; }
     .learn-menu { min-width: 0; }
     .learn-menu > summary { cursor: pointer; list-style: none; }
     .learn-menu > summary::-webkit-details-marker { display: none; }
@@ -447,6 +454,8 @@
     @media (max-width: 900px) {
       .app-body { grid-template-columns: 1fr; }
       .app-nav { flex-direction: row; overflow-x: auto; gap: .4rem; padding: .6rem .75rem; border-right: 0; border-bottom: 1px solid rgba(155, 168, 196, .16); }
+      .app-nav-external { margin-top: 0; padding-top: 0; border-top: 0; flex: 0 0 auto; border-left: 1px solid rgba(155, 168, 196, .16); padding-left: .6rem; position: static; background: none; }
+      .nav-telegram { white-space: nowrap; }
       .nav-link { white-space: nowrap; }
       .research-workspace { display: block; }
       .signal-panel { position: static; margin-bottom: 1rem; }
@@ -477,7 +486,6 @@
       <nav class="app-nav" aria-label="CrashDash sections">
         <a class="nav-link" href="?view=today" data-nav-view="today">Today</a>
         <a class="nav-link" href="?view=current" data-nav-view="current">Research Alerts</a>
-        <a class="nav-link" href="https://t.me/+0J2Xbgu7M6ozYjQ0" target="_blank" rel="noopener noreferrer" title="Join CrashDash Research Alerts on Telegram">Telegram Alerts <span aria-hidden="true">↗</span></a>
         <a class="nav-link" href="?view=historical" data-nav-view="historical">Historical Alerts</a>
         <a class="nav-link" href="?view=timeline" data-nav-view="timeline">Signal Timeline</a>
         <a class="nav-link" href="?view=watchlist" data-nav-view="watchlist">Watchlist</a>
@@ -491,6 +499,9 @@
             <div data-learn-resources></div>
           </div>
         </details>
+        <div class="app-nav-external">
+          <a class="nav-telegram" href="https://t.me/+0J2Xbgu7M6ozYjQ0" target="_blank" rel="noopener noreferrer" title="Join CrashDash Research Alerts on Telegram"><svg class="nav-telegram-icon" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="11" fill="#229ED9" /><path fill="#ffffff" transform="translate(12 12) scale(.62) translate(-12 -11.6)" d="M21.9 3.3 2.8 10.6c-.9.4-.9 1.6.1 1.9l4.6 1.4 1.7 5.3c.3.9 1.4 1 1.9.3l2.4-3.1 4.5 3.3c.7.5 1.7.1 1.9-.8l3-14c.2-.9-.7-1.7-1.6-1.3z" /></svg><span class="nav-telegram-label">Telegram Alerts</span><span class="nav-telegram-badge">NEW</span><span class="nav-telegram-arrow" aria-hidden="true">↗</span></a>
+        </div>
       </nav>
       <main class="app-main">
         <p id="load-status" role="status">Loading static contract&hellip;</p>

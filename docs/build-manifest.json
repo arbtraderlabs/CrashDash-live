@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-09-17T17:58:56.183059+00:00",
+  "generated_at": "2026-09-17T19:00:22.757021+00:00",
   "pipeline_version": "1.0.0",
   "source_mode": "local",
   "source_identifier": "product",
   "source_sha": null,
-  "publication_repo_sha": "eeaa927e210d1c326e9a68310ffa20e9133ba3c5",
+  "publication_repo_sha": "42887d34b5fcf1052d7f6ee076a3bf4e367154ea",
   "current_signal_count": 32,
   "historical_event_count": 3851,
   "instrument_count": 263,
   "file_count": 277,
-  "total_bytes": 85864493,
+  "total_bytes": 85866318,
   "artifact_sha256": {
     "data/dashboard.json": "62507080ead87214a59368d5a5a514a63f4a6a782d019e91faaec91b92f212b1",
     "data/beginner.json": "e0ea75d7dbe8360ad41984f47db598343f83bd236fdba25724b4f7f7eaf12698",
