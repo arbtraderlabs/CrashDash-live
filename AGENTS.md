@@ -12,7 +12,7 @@ Do not use this repository for:
 - temporary debugging
 - manual editing of generated application files
 
-Customer-facing content must arrive only through the controlled promotion flow from the accepted CrashDash-v4-live-test artefact.
+Customer-facing content must arrive only through the controlled promotion flow from the accepted `CrashDash-web-build` artefact. Canonical repository responsibilities are maintained in `CrashDash-integration/docs/architecture/REPOSITORY_RESPONSIBILITIES.md`.
 
 Expected root contents:
 - docs/
