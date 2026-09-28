@@ -1,2 +1,2 @@
 branch=main
-folder=uat
+folder=production
