@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-09-23T16:07:06.407187+00:00",
+  "generated_at": "2026-09-28T14:48:18.017123+00:00",
   "pipeline_version": "1.0.0",
   "source_mode": "local",
   "source_identifier": "product",
   "source_sha": null,
-  "publication_repo_sha": "93e29a738223f6f76e24beffe45df138d0e47ae3",
-  "current_signal_count": 33,
+  "publication_repo_sha": "38ba079835f6840daae1d1c9253bfd049517624d",
+  "current_signal_count": 29,
   "historical_event_count": 3871,
   "instrument_count": 263,
   "file_count": 277,
-  "total_bytes": 85631462,
+  "total_bytes": 53473723,
   "artifact_sha256": {
-    "data/dashboard.json": "8fe38d42e92def2be9288baaf9b57dde9d9d3f58d2bef692eb5ec555a7ad2ce1",
-    "data/beginner.json": "fb69a40d689797a59479352d52721aaa6cf9d813a4b84604c7879269307d3a54",
-    "data/pro.json": "127e1dd977797697f02a12d01fa87cffff9f7827618175b7ae60f2034b1c113b",
-    "data/history.json": "d99ad1fdc04b3c98d3b51c24c81c7c28f1e5e816a2ef0526150f7254695e051d"
+    "data/dashboard.json": "22f7cb8abf93bfffe9fc47c7f111677102af76199d739ac2848bcee72135e6b9",
+    "data/beginner.json": "55423a62de6db0d757feb49d59659aed99246a3b7e95b93a70e98ae08bcebb00",
+    "data/pro.json": "ebdc51b1496c7eb8acf7461a4ad3ae941fe44278697cc90b52a51e9ed4b193c2",
+    "data/history.json": "0cc4451bbea700cafb20ef5b7ac23d07c83530abe46f00b277822ca6c9924992"
   }
 }
