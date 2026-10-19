@@ -4,7 +4,7 @@
  * DOM (see tests/browser/vnext_shell.test.js).
  */
 
-import { escapeHtml, formatMarketCap, formatNumber, humanDate, safeExternalUrl } from "./browser.js?v=004j";
+import { escapeHtml, formatMarketCap, formatNumber, humanDate, safeExternalUrl } from "./browser.js?v=20261019T154000Z";
 
 export const SEVERITY_ORDER = Object.freeze({
   "EXTREME CAUTION": 0,
@@ -155,10 +155,24 @@ export function filterCurrentRecords(records, filters) {
   const severity = filters.severity || "ALL";
   const accumulationOnly = filters.accumulationOnly === true;
   const exchange = filters.exchange || "ALL";
+  // Search matches the ticker or the company name, case-insensitively. The
+  // approved sandbox UI offered this; the MVP filter bar had lost it.
+  const search = String(filters.search || "").trim().toLowerCase();
   return records.filter((record) =>
     (severity === "ALL" || record.watch_severity === severity) &&
     (!accumulationOnly || record.accumulation_state === "DETECTED") &&
-    (exchange === "ALL" || record.exchange === exchange));
+    (exchange === "ALL" || record.exchange === exchange) &&
+    (!search ||
+      String(record.ticker || "").toLowerCase().includes(search) ||
+      String(record.company_name || "").toLowerCase().includes(search)));
+}
+
+/** True when any filter deviates from its default, so Reset can be offered. */
+export function hasActiveCurrentFilters(filters) {
+  return (filters.severity || "ALL") !== "ALL"
+    || filters.accumulationOnly === true
+    || (filters.exchange || "ALL") !== "ALL"
+    || String(filters.search || "").trim() !== "";
 }
 
 export function sortCurrentRecords(records, sort) {
@@ -211,14 +225,16 @@ export function renderCurrentList(allRecords, selectedInstrumentId, filters) {
   const qualityNote = !showQuality && allRecords[0]?.data_quality === "PARTIAL"
     ? '<p class="toolbar-note">All current signals currently show partial evidence coverage &mdash; see the selected instrument for specifics.</p>' : "";
   const exchangeFilter = exchanges.length > 1
-    ? `<label class="sort-control">Exchange <select data-exchange-filter><option value="ALL" ${(!filters.exchange || filters.exchange === "ALL") ? "selected" : ""}>All</option>${exchanges.map((exchange) => `<option value="${escapeHtml(exchange)}" ${filters.exchange === exchange ? "selected" : ""}>${escapeHtml(exchange)}</option>`).join("")}</select></label>` : "";
+    ? `<label class="sort-control">Exchange <select data-exchange-filter><option value="ALL" ${(!filters.exchange || filters.exchange === "ALL") ? "selected" : ""}>All markets</option>${exchanges.map((exchange) => `<option value="${escapeHtml(exchange)}" ${filters.exchange === exchange ? "selected" : ""}>${escapeHtml(exchange)}</option>`).join("")}</select></label>` : "";
   return `<section class="dashboard-panel" aria-labelledby="current-signals-heading">
     <div class="dashboard-heading"><div><p class="eyebrow">Current alert universe</p><h2 id="current-signals-heading">Current Research Alerts</h2></div><p class="dashboard-count">${visible.length} of ${allRecords.length} instruments</p></div>
     <div class="dashboard-controls" aria-label="Current signal filters">
+      <label class="research-company-search">Ticker or company <input type="search" data-dashboard-search value="${escapeHtml(filters.search || "")}" placeholder="Search alerts" aria-label="Search current Research alerts by ticker or company"></label>
       <div class="filter-group">${severityFilterBar(filters.severity || "ALL", "severity-filter")}</div>
       <label class="filter-toggle"><input type="checkbox" data-accumulation-filter ${filters.accumulationOnly ? "checked" : ""}> Accumulation</label>
       ${exchangeFilter}
       <label class="sort-control">Sort <select data-dashboard-sort><option value="newest" ${(filters.sort || "newest") === "newest" ? "selected" : ""}>Newest</option><option value="severity" ${filters.sort === "severity" ? "selected" : ""}>Severity</option></select></label>
+      ${hasActiveCurrentFilters(filters) ? '<button type="button" class="filter-reset" data-dashboard-reset>Reset</button>' : ""}
     </div>
     ${qualityNote}
     <div class="dashboard-list">${rows || '<p class="dashboard-empty">No instruments match these filters.</p>'}</div>
@@ -339,21 +355,120 @@ export function renderHistoricalDetail(record) {
   </section>`;
 }
 
+/* Normalise one engine-supplied date to an ISO ``YYYY-MM-DD`` string.
+ * The engine emits ISO dates for signals but human dates (``15 Oct 2026``)
+ * for RNS announcements, so a blind ``slice(0, 10)`` truncates a real date
+ * into a broken one. Returns null when the value cannot be understood, so an
+ * unusable date contributes no event rather than a wrong one. */
+const MONTH_TOKENS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+export function normaliseEventDate(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const human = /^(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})$/.exec(text);
+  if (human) {
+    const month = MONTH_TOKENS.indexOf(human[2].slice(0, 3).toLowerCase());
+    if (month >= 0) {
+      return `${human[3]}-${String(month + 1).padStart(2, "0")}-${human[1].padStart(2, "0")}`;
+    }
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.valueOf())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
+/* Prefer the timestamped value, then the display date, then any fallback. */
+function rnsEventDate(rns) {
+  return (
+    normaliseEventDate(rns.published_at) ||
+    normaliseEventDate(rns.date) ||
+    normaliseEventDate(rns.published)
+  );
+}
+
 export function renderTimeline(records) {
   const events = [];
   for (const record of Array.isArray(records) ? records : []) {
-    if (record.signal_date) {
-      events.push({ date: record.signal_date, kind: "CrashDash signal", text: `${record.ticker} · ${record.watch_severity || "Signal unavailable"}` });
+    const signalDate = normaliseEventDate(record.signal_date);
+    if (signalDate) {
+      events.push({ date: signalDate, kind: "CrashDash signal", text: `${record.ticker} · ${record.watch_severity || "Signal unavailable"}` });
     }
     for (const rns of Array.isArray(record.rns_records) ? record.rns_records : []) {
-      const date = rns.date || rns.published_at || rns.published;
+      const date = rnsEventDate(rns);
       if (!date) continue;
-      events.push({ date: String(date).slice(0, 10), kind: "Official RNS", text: rns.title || rns.headline || `${record.ticker} announcement`, href: safeExternalUrl(rns.url || rns.link || rns.source_url) });
+      events.push({ date, kind: "Official RNS", text: rns.title || rns.headline || `${record.ticker} announcement`, href: safeExternalUrl(rns.url || rns.link || rns.source_url) });
     }
   }
   events.sort((left, right) => right.date.localeCompare(left.date));
   if (!events.length) return '<section class="dashboard-panel"><p class="eyebrow">Timeline</p><h2>Signal Timeline</h2><p class="status">No signal or official RNS events are available.</p></section>';
   return `<section class="dashboard-panel" aria-labelledby="timeline-heading"><p class="eyebrow">Combined evidence</p><h2 id="timeline-heading">Signal Timeline</h2><ol class="timeline">${events.map((event) => `<li class="timeline-event"><time datetime="${escapeHtml(event.date)}">${escapeHtml(humanDate(event.date))}</time><div><strong>${escapeHtml(event.kind)}</strong><p>${event.href ? `<a href="${escapeHtml(event.href)}" target="_blank" rel="noreferrer">${escapeHtml(event.text)}</a>` : escapeHtml(event.text)}</p></div></li>`).join("")}</ol></section>`;
+}
+
+/* --- Story Mode (company-level chronological timeline) ---------------- */
+
+/* Build one chronological story per company from data the engine actually
+ * produced: CrashDash signal dates and official RNS announcements. Nothing is
+ * inferred, classified or fabricated -- when a record carries no dated event
+ * it contributes nothing, and "pending milestone" content is explicitly
+ * reported as unavailable rather than invented. */
+export function buildCompanyStories(records) {
+  const byTicker = new Map();
+  for (const record of Array.isArray(records) ? records : []) {
+    const ticker = String(record.ticker || "").trim();
+    if (!ticker) continue;
+    const events = byTicker.get(ticker) || [];
+    const signalDate = normaliseEventDate(record.signal_date);
+    if (signalDate) {
+      events.push({
+        date: signalDate,
+        kind: "CrashDash signal",
+        text: record.watch_severity || "Signal unavailable",
+        href: null,
+        source: "engine",
+      });
+    }
+    for (const rns of Array.isArray(record.rns_records) ? record.rns_records : []) {
+      const date = rnsEventDate(rns);
+      if (!date) continue;
+      events.push({
+        date,
+        kind: "Official RNS",
+        text: rns.title || rns.headline || `${ticker} announcement`,
+        href: safeExternalUrl(rns.url || rns.link || rns.source_url),
+        source: "rns",
+      });
+    }
+    if (events.length) byTicker.set(ticker, events);
+  }
+  return [...byTicker.entries()]
+    .map(([ticker, events]) => {
+      const ordered = events.slice().sort((left, right) => right.date.localeCompare(left.date));
+      return {
+        ticker,
+        events: ordered,
+        eventCount: ordered.length,
+        rnsCount: ordered.filter((event) => event.source === "rns").length,
+        firstDate: ordered[ordered.length - 1].date,
+        latestDate: ordered[0].date,
+      };
+    })
+    .sort((left, right) => right.latestDate.localeCompare(left.latestDate) || left.ticker.localeCompare(right.ticker));
+}
+
+export function renderStoryMode(records) {
+  const stories = buildCompanyStories(records);
+  if (!stories.length) {
+    return '<section class="dashboard-panel"><p class="eyebrow">Story Mode</p><h2>Company timelines</h2><p class="status">No dated signal or official RNS events are available to build a company timeline.</p></section>';
+  }
+  const header = `<section class="dashboard-panel"><p class="eyebrow">Story Mode</p><h2>Company timelines</h2><p class="context-note">Each story lists the dated events CrashDash actually recorded for that company &mdash; its signal history and official RNS announcements &mdash; newest first. Every entry links to its source where one exists. Pending milestones and forward-looking developments are not shown because the current data does not contain them. Research context only.</p></section>`;
+  const body = stories.map((story) => {
+    const events = story.events.map((event) => `<li class="timeline-event"><time datetime="${escapeHtml(event.date)}">${escapeHtml(humanDate(event.date))}</time><div><strong>${escapeHtml(event.kind)}</strong><p>${event.href ? `<a href="${escapeHtml(event.href)}" target="_blank" rel="noreferrer">${escapeHtml(event.text)}</a>` : escapeHtml(event.text)}</p></div></li>`).join("");
+    return `<section class="dashboard-panel story-mode" aria-labelledby="story-${escapeHtml(story.ticker)}"><h2 id="story-${escapeHtml(story.ticker)}">${escapeHtml(story.ticker)}</h2><p class="context-note">${escapeHtml(String(story.eventCount))} recorded event${story.eventCount === 1 ? "" : "s"} &middot; ${escapeHtml(String(story.rnsCount))} official RNS &middot; ${escapeHtml(humanDate(story.firstDate))} to ${escapeHtml(humanDate(story.latestDate))}</p><ol class="timeline">${events}</ol></section>`;
+  }).join("");
+  return header + body;
 }
 
 /* --- Placeholders and Learn --------------------------------------------- */

@@ -5,10 +5,10 @@
  * shell_views.js as pure, independently testable functions.
  */
 
-import { escapeHtml, formatQuotePrice, humanDate, renderBeginner, renderPointEventContext, renderPro } from "./browser.js?v=007rns";
-import { normaliseDashboard, normaliseHistory, normaliseRealBundle, normaliseInstrumentDetail, isInstrumentContractPayload } from "./shell_data.js?v=008web";
-import { parseState, serializeState } from "./shell_state.js?v=009learn";
-import { renderHowToUseCrashDash, renderWhatToExpectCrashDash, renderLearnResources } from "./learn_pages.js?v=009learn";
+import { escapeHtml, formatQuotePrice, humanDate, renderBeginner, renderPointEventContext, renderPro } from "./browser.js?v=20261019T154000Z";
+import { normaliseDashboard, normaliseHistory, normaliseRealBundle, normaliseInstrumentDetail, isInstrumentContractPayload } from "./shell_data.js?v=20261019T154000Z";
+import { parseState, serializeState } from "./shell_state.js?v=20261019T154000Z";
+import { renderHowToUseCrashDash, renderWhatToExpectCrashDash, renderLearnResources } from "./learn_pages.js?v=20261019T154000Z";
 import {
   filterHistoryRecords,
   paginate,
@@ -23,7 +23,9 @@ import {
   renderToday,
   selectTodayAlerts,
   summariseToday,
-} from "./shell_views.js?v=007rns";
+} from "./shell_views.js?v=20261019T154000Z";
+import { buildCompanyNews, buildStories, buildStoryArtifact, quarterWindow, renderCompanyNews, renderCompanyStory, renderStoryHub } from "./story_views.js?v=20261019T154000Z";
+import { bindCurrentCatalystReplay, renderCurrentCatalystStory } from "./current_story_viewer.js?v=20261019T154000Z";
 
 function cleanChartEventText(value) {
   return String(value ?? "")
@@ -55,12 +57,16 @@ let historyLoadPromise = null;
 let loadedInstrumentId = null;
 let instrumentUnavailableReason = null;
 let productDataStatus = "LOADING";
+// Why the product feed could not be used. Published UAT acceptance needs this:
+// an opaque "invalid contract" panel cannot distinguish an unreachable origin
+// from a stale module or a genuinely malformed payload.
+let productDataStatusReason = "";
 let chartRange = "1Y";
 let selectedChartDate = null;
 let chartFilters = { severities: {}, accumulation: true, rns: true };
 let company30sIndex = 0;
 
-const currentFilters = { severity: "ALL", accumulationOnly: false, sort: "newest", exchange: "ALL" };
+const currentFilters = { severity: "ALL", accumulationOnly: false, sort: "newest", exchange: "ALL", search: "" };
 const historyFilters = { severity: "ALL", accumulationOnly: false, year: "ALL", search: "", view: "all", pageSize: PAGE_SIZE_OPTIONS[0], page: 1 };
 function prefersReducedMotion() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -253,7 +259,10 @@ function renderProductStatusBanner() {
     return '<section class="status dashboard-empty" data-product-status="EMPTY"><p>No product data has been published yet.</p></section>';
   }
   if (productDataStatus === "CONTRACT_ERROR") {
-    return '<section class="status error-panel" data-product-status="CONTRACT_ERROR"><p>The product data feed returned an invalid contract and could not be loaded.</p></section>';
+    const detail = productDataStatusReason
+      ? `<p class="status-detail" data-product-status-reason>${escapeHtml(productDataStatusReason)}</p>`
+      : "";
+    return `<section class="status error-panel" data-product-status="CONTRACT_ERROR"><p>The product data feed returned an invalid contract and could not be loaded.</p>${detail}</section>`;
   }
   return "";
 }
@@ -283,8 +292,7 @@ async function renderCurrentView() {
   </div>`;
   root.querySelectorAll("[data-instrument-id]").forEach((button) => {
     button.addEventListener("click", () => selectCurrentInstrument(button.dataset.instrumentId));
-  });
-  root.querySelectorAll("[data-severity-filter]").forEach((button) => {
+  });  root.querySelectorAll("[data-severity-filter]").forEach((button) => {
     button.addEventListener("click", () => { currentFilters.severity = button.dataset.severityFilter; renderCurrentView(); });
   });
   root.querySelector("[data-accumulation-filter]")?.addEventListener("change", (event) => {
@@ -295,6 +303,22 @@ async function renderCurrentView() {
   });
   root.querySelector("[data-dashboard-sort]")?.addEventListener("change", (event) => {
     currentFilters.sort = event.target.value; renderCurrentView();
+  });
+  // Search filters without a round trip; focus is restored so typing is not
+  // interrupted by the re-render.
+  const searchInput = root.querySelector("[data-dashboard-search]");
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      const caret = searchInput.value.length;
+      currentFilters.search = searchInput.value;
+      renderCurrentView();
+      const next = root.querySelector("[data-dashboard-search]");
+      if (next) { next.focus(); next.setSelectionRange(caret, caret); }
+    });
+  }
+  root.querySelector("[data-dashboard-reset]")?.addEventListener("click", () => {
+    Object.assign(currentFilters, { severity: "ALL", accumulationOnly: false, sort: "newest", exchange: "ALL", search: "" });
+    renderCurrentView();
   });
   root.querySelectorAll("[data-mode-button]").forEach((button) => {
     button.addEventListener("click", () => navigate({ mode: button.dataset.modeButton }));
@@ -317,6 +341,7 @@ async function renderCurrentView() {
   });
   wireChartInspection(root);
   wireCompanyIn30Seconds(root);
+  mountCompanyStory(selectedId);
 }
 
 /* Company in 30 Seconds: desktop shows all three cards in a CSS grid (no JS
@@ -636,7 +661,7 @@ function renderHistoricalView() {
 
 async function ensureHistoryLoaded() {
   if (historyData || historyLoadPromise) return historyLoadPromise;
-  historyLoadPromise = fetch("./data/history.json")
+  historyLoadPromise = fetchWithTimeout("./data/history.json")
     .then((response) => {
       if (response.status === 404) throw Object.assign(new Error("not found"), { reason: "NOT_AVAILABLE" });
       if (!response.ok) throw Object.assign(new Error("request failed"), { reason: "CONTRACT_ERROR" });
@@ -656,9 +681,238 @@ async function ensureHistoryLoaded() {
   return historyLoadPromise;
 }
 
+/* ---------------------------------------------------------------------------
+ * Story Mode (quarter timeline)
+ *
+ * Presentation lives in story_views.js; this section only gathers data and
+ * binds events. RNS rows and the company summary are read from the instrument
+ * payload the build already publishes, so Story Mode adds no new data source
+ * and no new classification.
+ * ------------------------------------------------------------------------ */
+
+const storyState = { ticker: null, asOf: null, offset: 0, sort: "latest" };
+let storyRnsCache = null;
+
+function storyMonthIndex(iso) {
+  const date = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(date.valueOf())) return null;
+  return date.getUTCFullYear() * 12 + date.getUTCMonth();
+}
+
+async function storyRnsByTicker() {
+  if (storyRnsCache) return storyRnsCache;
+  const collected = {};
+  for (const [instrumentId, reference] of Object.entries(dashboard.details || {})) {
+    if (!reference?.detail_path) continue;
+    let detail = instrumentDetails.get(instrumentId);
+    if (detail === undefined) {
+      const result = await fetchInstrumentDetail(reference.detail_path);
+      detail = result.status === "AVAILABLE" ? result.detail : null;
+      if (detail) instrumentDetails.set(instrumentId, detail);
+    }
+    const rows = detail?.instrument_detail?.rns;
+    if (Array.isArray(rows) && rows.length) collected[instrumentId] = rows;
+  }
+  storyRnsCache = collected;
+  return collected;
+}
+
+function storySummaryFor(ticker) {
+  const detail = instrumentDetails.get(ticker);
+  const beginner = detail?.beginner || {};
+  const summary = detail?.instrument_detail?.company_summary || {};
+  const available = summary.status === "AVAILABLE";
+  return {
+    exchange: beginner.exchange || detail?.instrument_detail?.identity?.exchange || null,
+    industry: beginner.industry || null,
+    currentStatus: beginner.current_instrument_status || null,
+    dataQuality: beginner.data_quality || null,
+    summaryStatus: summary.status || "UNAVAILABLE",
+    whatTheyDo: available ? summary.what_they_do : null,
+    whyItMatters: available ? summary.why_it_matters : null,
+  };
+}
+
+function bindStoryControls(stories) {
+  root.querySelectorAll("[data-story-ticker]").forEach((button) => {
+    button.addEventListener("click", () => {
+      storyState.ticker = button.dataset.storyTicker;
+      renderStoryView();
+    });
+  });
+  root.querySelectorAll("[data-story-period]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = button.dataset.storyPeriod;
+      if (action === "earlier") storyState.offset += 1;
+      else if (action === "later") storyState.offset = Math.max(0, storyState.offset - 1);
+      else {
+        storyState.offset = 0;
+        const latest = button.dataset.storyLatestDate;
+        if (latest) storyState.asOf = latest;
+      }
+      renderStoryView();
+    });
+  });
+  const replay = root.querySelector("[data-story-asof]");
+  if (replay) {
+    replay.addEventListener("change", () => {
+      const value = replay.value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+      storyState.asOf = value;
+      storyState.offset = 0;
+      renderStoryView();
+    });
+  }
+  const search = root.querySelector("[data-story-search]");
+  if (search) {
+    search.addEventListener("input", () => {
+      const term = search.value.trim().toLowerCase();
+      root.querySelectorAll("[data-story-search]").forEach((row) => {
+        if (row === search) return;
+        const haystack = row.dataset.storySearch || "";
+        row.hidden = Boolean(term) && !haystack.includes(term);
+      });
+    });
+  }
+  const sort = root.querySelector("[data-story-sort]");
+  if (sort) {
+    sort.value = storyState.sort;
+    sort.addEventListener("change", () => {
+      storyState.sort = sort.value;
+      renderStoryView("focus");
+    });
+  }
+  void stories;
+}
+
+/* Mounts the inline Story Mode section directly beneath Company in 30 Seconds,
+ * the position the approved layout uses, then fills it. */
+function mountCompanyStory(instrumentId) {
+  const anchor = root.querySelector(".company-30s");
+  const host = document.createElement("div");
+  host.id = "company-story";
+  host.setAttribute("data-company-story-host", instrumentId || "");
+  host.innerHTML = '<section class="status dashboard-empty" aria-busy="true"><p>Loading company story...</p></section>';
+  if (anchor && anchor.parentElement) anchor.insertAdjacentElement("afterend", host);
+  else root.querySelector(".detail-panel")?.append(host);
+  void fillCompanyStory(instrumentId);
+}
+
+/* Fills the inline Story Mode section on the Research instrument profile so the
+ * profile answers "what is this company's story" without a navigation jump. */
+async function fillCompanyStory(instrumentId) {
+  const host = root.querySelector("#company-story");
+  if (!host || !instrumentId) return;
+  try {
+    if (!historyData) await ensureHistoryLoaded();
+    if (!historyData) return;
+    const rnsByTicker = await storyRnsByTicker();
+    const stories = buildStories(historyData.records || [], rnsByTicker);
+    const story = stories.find((item) => item.ticker === instrumentId) || null;
+    const asOf = stories.length
+      ? stories.reduce((max, item) => (item.latestDate > max ? item.latestDate : max), stories[0].latestDate)
+      : null;
+    if (!root.querySelector("#company-story")) return;
+    const artifact = asOf
+      ? buildStoryArtifact(stories, instrumentId, asOf, { rnsRows: rnsByTicker[instrumentId] || [] })
+      : null;
+    if (!artifact) {
+      host.innerHTML = renderCompanyStory(null, { asOf: asOf || "unavailable" });
+      return;
+    }
+    host.innerHTML = renderCurrentCatalystStory(artifact, instrumentId, escapeHtml, { compact: true });
+    bindCurrentCatalystReplay(host);
+  } catch {
+    host.innerHTML = '<section class="dashboard-panel"><p class="status">The company story could not be loaded.</p></section>';
+  }
+}
+
+const newsFilters = { search: "", sentiment: "ALL" };
+
+async function renderCompanyNewsView() {
+  root.innerHTML = '<section class="status dashboard-empty" aria-busy="true"><p>Loading company announcements...</p></section>';
+  if (!historyData) {
+    await ensureHistoryLoaded();
+    if (!historyData) return null;
+  }
+  const rnsByTicker = await storyRnsByTicker();
+  const stories = buildStories(historyData.records || [], rnsByTicker);
+  const rows = buildCompanyNews(stories);
+  const asOf = stories.length
+    ? stories.reduce((max, story) => (story.latestDate > max ? story.latestDate : max), stories[0].latestDate)
+    : "unavailable";
+  root.innerHTML = renderCompanyNews(rows, asOf, newsFilters);
+  const search = root.querySelector("[data-news-search]");
+  if (search) {
+    search.addEventListener("input", () => {
+      newsFilters.search = search.value;
+      root.innerHTML = renderCompanyNews(rows, asOf, newsFilters);
+      const next = root.querySelector("[data-news-search]");
+      if (next) { next.focus(); next.setSelectionRange(next.value.length, next.value.length); }
+    });
+  }
+  const sentiment = root.querySelector("[data-news-sentiment]");
+  if (sentiment) {
+    sentiment.addEventListener("change", () => {
+      newsFilters.sentiment = sentiment.value;
+      root.innerHTML = renderCompanyNews(rows, asOf, newsFilters);
+    });
+  }
+  return null;
+}
+
+async function renderStoryView(variant = "story") {
+  if (!historyData) {
+    root.innerHTML = '<section class="status dashboard-empty" aria-busy="true"><p>Loading company stories...</p></section>';
+    await ensureHistoryLoaded();
+    if (!historyData) return null;
+  }
+  const rnsByTicker = await storyRnsByTicker();
+  const everything = buildStories(historyData.records || [], rnsByTicker);
+  if (!everything.length) {
+    root.innerHTML = '<section class="dashboard-panel"><p class="status">No dated signal or official RNS event is available for Story Mode.</p></section>';
+    return null;
+  }
+  const minDate = everything.reduce((min, story) => (story.firstDate < min ? story.firstDate : min), everything[0].firstDate);
+  const maxDate = everything.reduce((max, story) => (story.latestDate > max ? story.latestDate : max), everything[0].latestDate);
+  if (!storyState.asOf || storyState.asOf > maxDate || storyState.asOf < minDate) {
+    storyState.asOf = maxDate;
+  }
+  const span = Math.max(
+    0,
+    Math.floor((storyMonthIndex(storyState.asOf) - storyMonthIndex(minDate)) / 3),
+  );
+  storyState.offset = Math.min(storyState.offset, span);
+
+  const stories = buildStories(historyData.records || [], rnsByTicker, storyState.asOf);
+  if (!stories.length) {
+    root.innerHTML = `<section class="dashboard-panel"><p class="status">No recorded event is visible on or before ${escapeHtml(storyState.asOf)}.</p></section>`;
+    return null;
+  }
+  if (!storyState.ticker && state.ticker && stories.some((story) => story.ticker === state.ticker)) {
+    storyState.ticker = state.ticker;
+  }
+  if (!storyState.ticker || !stories.some((story) => story.ticker === storyState.ticker)) {
+    storyState.ticker = stories[0].ticker;
+  }
+  const quarters = quarterWindow(storyState.asOf, storyState.offset);
+  root.innerHTML = renderStoryHub({
+    stories,
+    quarters,
+    selectedTicker: storyState.ticker,
+    asOf: storyState.asOf,
+    offset: storyState.offset,
+    bounds: { min: minDate, max: maxDate, maxOffset: span },
+    summary: storySummaryFor(storyState.ticker),
+    variant,
+    sort: storyState.sort,
+  });
+  bindStoryControls(stories);
+  return null;
+}
+
 function render() {
-  updateNav();
-  if (state.view === "guide") { root.innerHTML = renderHowToUseCrashDash(); return; }
+  updateNav();  if (state.view === "guide") { root.innerHTML = renderHowToUseCrashDash(); return; }
   if (state.view === "expect") { root.innerHTML = renderWhatToExpectCrashDash(); return; }
   if (state.view === "today") return renderTodayView();
   if (state.view === "current") return renderCurrentView();
@@ -674,6 +928,9 @@ function render() {
     root.innerHTML = renderTimeline(historyData.records);
     return null;
   }
+  if (state.view === "focus") return renderStoryView("focus");
+  if (state.view === "company-news") return renderCompanyNewsView();
+  if (state.view === "story") return renderStoryView("story");
   if (state.view === "watchlist") {
     root.innerHTML = renderPlaceholder({
       eyebrow: "Watchlist",
@@ -767,26 +1024,45 @@ window.addEventListener("popstate", () => {
   showTour();
 });
 
+/* A stalled request must become a reported failure, never an endless
+   "Loading..." placeholder. 15s is well beyond a healthy static-file fetch. */
+const FETCH_TIMEOUT_MS = 15000;
+
+async function fetchWithTimeout(path, init) {
+  if (typeof AbortController !== "function") return fetch(path, init);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(path, { ...(init || {}), signal: controller.signal });
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      throw new Error(`timed out after ${FETCH_TIMEOUT_MS / 1000}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function safeFetchJson(path) {
   try {
-    const response = await fetch(path);
-    if (response.status === 404) return { status: "NOT_AVAILABLE", payload: null };
-    if (!response.ok) return { status: "CONTRACT_ERROR", payload: null };
+    const response = await fetchWithTimeout(path);
+    if (response.status === 404) return { status: "NOT_AVAILABLE", payload: null, reason: `HTTP 404 for ${path}` };
+    if (!response.ok) return { status: "CONTRACT_ERROR", payload: null, reason: `HTTP ${response.status} for ${path}` };
     try {
       return { status: "AVAILABLE", payload: await response.json() };
-    } catch {
-      return { status: "CONTRACT_ERROR", payload: null };
+    } catch (error) {
+      return { status: "CONTRACT_ERROR", payload: null, reason: `response was not valid JSON: ${path} (${error && error.message ? error.message : error})` };
     }
-  } catch {
-    return { status: "CONTRACT_ERROR", payload: null };
+  } catch (error) {
+    return { status: "CONTRACT_ERROR", payload: null, reason: `request failed: ${path} (${error && error.message ? error.message : error})` };
   }
 }
 
 async function loadPreviewContext() {
   if (!previewContext) return;
   try {
-    const response = await fetch("./preview-context.txt", { cache: "no-store" });
-    if (!response.ok) return;
+    const response = await fetch("./preview-context.txt", { cache: "no-store" });    if (!response.ok) return;
     const lines = (await response.text()).split("\n").map((line) => line.trim()).filter(Boolean);
     const values = Object.fromEntries(lines.map((line) => {
       const separator = line.indexOf("=");
@@ -801,8 +1077,8 @@ async function loadPreviewContext() {
     if (previewContext) {
       previewContext.classList.toggle("non-production", folder !== "production");
     }
-  } catch {
-    previewContext.textContent = "Preview source unavailable";
+  } catch (error) {
+    previewContext.textContent = `Preview source unavailable (${error && error.message ? error.message : error})`;
   }
 }
 
@@ -813,13 +1089,19 @@ async function bootstrap() {
     try {
       dashboard = normaliseDashboard(dashboardResult.payload);
       productDataStatus = "AVAILABLE";
-    } catch {
+      productDataStatusReason = "";
+    } catch (error) {
       dashboard = EMPTY_DASHBOARD;
       productDataStatus = "CONTRACT_ERROR";
+      productDataStatusReason = `dashboard.json did not match the expected contract: ${error && error.message ? error.message : error}`;
     }
   } else {
     dashboard = EMPTY_DASHBOARD;
     productDataStatus = dashboardResult.status === "NOT_AVAILABLE" ? "EMPTY" : "CONTRACT_ERROR";
+    productDataStatusReason = dashboardResult.reason || "";
+  }
+  if (productDataStatusReason) {
+    try { console.warn(`[crashdash] product feed unavailable: ${productDataStatusReason}`); } catch { /* never break the page */ }
   }
   const [beginnerResult, proResult, buildInfoResult] = await Promise.all([
     safeFetchJson("./data/beginner.json"),
