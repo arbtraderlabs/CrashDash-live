@@ -4,7 +4,7 @@
  * DOM (see tests/browser/vnext_shell.test.js).
  */
 
-import { escapeHtml, formatMarketCap, formatNumber, humanDate, safeExternalUrl } from "./browser.js?v=20261019T214500Z";
+import { escapeHtml, formatMarketCap, formatNumber, humanDate, safeExternalUrl } from "./browser.js?v=20261019T190359Z";
 
 export const SEVERITY_ORDER = Object.freeze({
   "EXTREME CAUTION": 0,
