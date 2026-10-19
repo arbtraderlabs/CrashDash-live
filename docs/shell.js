@@ -5,10 +5,10 @@
  * shell_views.js as pure, independently testable functions.
  */
 
-import { escapeHtml, formatQuotePrice, humanDate, renderBeginner, renderPointEventContext, renderPro } from "./browser.js?v=20261019T154000Z";
-import { normaliseDashboard, normaliseHistory, normaliseRealBundle, normaliseInstrumentDetail, isInstrumentContractPayload } from "./shell_data.js?v=20261019T154000Z";
-import { parseState, serializeState } from "./shell_state.js?v=20261019T154000Z";
-import { renderHowToUseCrashDash, renderWhatToExpectCrashDash, renderLearnResources } from "./learn_pages.js?v=20261019T154000Z";
+import { escapeHtml, formatQuotePrice, humanDate, renderBeginner, renderPointEventContext, renderPro } from "./browser.js?v=20261019T155700Z";
+import { normaliseDashboard, normaliseHistory, normaliseRealBundle, normaliseInstrumentDetail, isInstrumentContractPayload } from "./shell_data.js?v=20261019T155700Z";
+import { parseState, serializeState } from "./shell_state.js?v=20261019T155700Z";
+import { renderHowToUseCrashDash, renderWhatToExpectCrashDash, renderLearnResources } from "./learn_pages.js?v=20261019T155700Z";
 import {
   filterHistoryRecords,
   paginate,
@@ -23,9 +23,9 @@ import {
   renderToday,
   selectTodayAlerts,
   summariseToday,
-} from "./shell_views.js?v=20261019T154000Z";
-import { buildCompanyNews, buildStories, buildStoryArtifact, quarterWindow, renderCompanyNews, renderCompanyStory, renderStoryHub } from "./story_views.js?v=20261019T154000Z";
-import { bindCurrentCatalystReplay, renderCurrentCatalystStory } from "./current_story_viewer.js?v=20261019T154000Z";
+} from "./shell_views.js?v=20261019T155700Z";
+import { buildCompanyNews, buildStories, buildStoryArtifact, quarterWindow, renderCompanyNews, renderCompanyStory, renderStoryHub } from "./story_views.js?v=20261019T155700Z";
+import { bindCurrentCatalystReplay, renderCurrentCatalystStory } from "./current_story_viewer.js?v=20261019T155700Z";
 
 function cleanChartEventText(value) {
   return String(value ?? "")
