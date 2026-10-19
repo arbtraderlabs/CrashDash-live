@@ -5,10 +5,10 @@
  * shell_views.js as pure, independently testable functions.
  */
 
-import { escapeHtml, formatQuotePrice, humanDate, renderBeginner, renderPointEventContext, renderPro } from "./browser.js?v=20261019T155700Z";
-import { normaliseDashboard, normaliseHistory, normaliseRealBundle, normaliseInstrumentDetail, isInstrumentContractPayload } from "./shell_data.js?v=20261019T155700Z";
-import { parseState, serializeState } from "./shell_state.js?v=20261019T155700Z";
-import { renderHowToUseCrashDash, renderWhatToExpectCrashDash, renderLearnResources } from "./learn_pages.js?v=20261019T155700Z";
+import { escapeHtml, formatQuotePrice, humanDate, renderBeginner, renderPointEventContext, renderPro } from "./browser.js?v=20261019T214500Z";
+import { normaliseDashboard, normaliseHistory, normaliseRealBundle, normaliseInstrumentDetail, isInstrumentContractPayload } from "./shell_data.js?v=20261019T214500Z";
+import { parseState, serializeState } from "./shell_state.js?v=20261019T214500Z";
+import { renderHowToUseCrashDash, renderWhatToExpectCrashDash, renderLearnResources } from "./learn_pages.js?v=20261019T214500Z";
 import {
   filterHistoryRecords,
   paginate,
@@ -23,9 +23,9 @@ import {
   renderToday,
   selectTodayAlerts,
   summariseToday,
-} from "./shell_views.js?v=20261019T155700Z";
-import { buildCompanyNews, buildStories, buildStoryArtifact, quarterWindow, renderCompanyNews, renderCompanyStory, renderStoryHub } from "./story_views.js?v=20261019T155700Z";
-import { bindCurrentCatalystReplay, renderCurrentCatalystStory } from "./current_story_viewer.js?v=20261019T155700Z";
+} from "./shell_views.js?v=20261019T214500Z";
+import { buildCompanyNews, buildStories, buildStoryArtifact, quarterWindow, renderCompanyNews, renderCompanyStory, renderStoryHub } from "./story_views.js?v=20261019T214500Z";
+import { bindCurrentCatalystReplay, renderCurrentCatalystStory } from "./current_story_viewer.js?v=20261019T214500Z";
 
 function cleanChartEventText(value) {
   return String(value ?? "")
@@ -691,30 +691,104 @@ async function ensureHistoryLoaded() {
  * ------------------------------------------------------------------------ */
 
 const storyState = { ticker: null, asOf: null, offset: 0, sort: "latest" };
+/* @story-loader:start
+ * Dependency-injected instrument loading with no DOM access.
+ * tests/test_story_loading.test.js evaluates exactly these lines against a
+ * fake fetch, so keep this region self-contained. */
 let storyRnsCache = null;
+let storyRnsPromise = null;
+/* Bumped whenever the published dataset is replaced, so a slow in-flight
+ * corpus read can never populate a newer view with older rows. */
+let storyCorpusGeneration = 0;
+
+/* Instrument details are cached by id and de-duplicated while in flight: the
+ * same company payload is requested by the profile, the chart and Story Mode,
+ * and a corpus pass must not re-download what a profile already holds. */
+const instrumentDetailPromises = new Map();
+const INSTRUMENT_FETCH_CONCURRENCY = 8;
+
+function loadInstrumentDetailCached(instrumentId) {
+  if (instrumentDetails.has(instrumentId)) {
+    return Promise.resolve(instrumentDetails.get(instrumentId));
+  }
+  if (instrumentFailures.has(instrumentId)) return Promise.resolve(null);
+  const inFlight = instrumentDetailPromises.get(instrumentId);
+  if (inFlight) return inFlight;
+  const reference = dashboard.details ? dashboard.details[instrumentId] : null;
+  if (!reference?.detail_path) {
+    const inline = isInstrumentContractPayload(reference) ? reference : null;
+    if (!inline) instrumentFailures.set(instrumentId, "NOT_AVAILABLE");
+    return Promise.resolve(inline);
+  }
+  const pending = fetchInstrumentDetail(reference.detail_path)
+    .then((result) => {
+      const detail = result.status === "AVAILABLE" ? result.detail : null;
+      if (detail) instrumentDetails.set(instrumentId, detail);
+      else instrumentFailures.set(instrumentId, result.status);
+      return detail;
+    })
+    .finally(() => { instrumentDetailPromises.delete(instrumentId); });
+  instrumentDetailPromises.set(instrumentId, pending);
+  return pending;
+}
+
+/* Runs `worker` over `items` with at most `limit` requests in flight. */
+async function mapBounded(items, limit, worker) {
+  const queue = items.slice();
+  const workers = Math.min(Math.max(1, limit), queue.length || 1);
+  await Promise.all(Array.from({ length: workers }, async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      try { await worker(item); } catch { /* one payload never breaks the pass */ }
+    }
+  }));
+}
+
+function storyRnsRows(detail) {
+  const rows = detail?.instrument_detail?.rns;
+  return Array.isArray(rows) && rows.length ? rows : null;
+}
+
+/* Announcement rows for an explicit set of companies. A company profile uses a
+ * one-element set and therefore reads exactly one instrument payload. */
+async function rnsByTickerFor(tickers) {
+  const collected = {};
+  await mapBounded(tickers, INSTRUMENT_FETCH_CONCURRENCY, async (instrumentId) => {
+    const rows = storyRnsRows(await loadInstrumentDetailCached(instrumentId));
+    if (rows) collected[instrumentId] = rows;
+  });
+  return collected;
+}
+
+/* The complete corpus is required only by the multi-company Story hub. It is
+ * read once, with bounded concurrency, and shared by every caller. */
+function storyRnsByTicker() {
+  if (storyRnsCache) return Promise.resolve(storyRnsCache);
+  if (storyRnsPromise) return storyRnsPromise;
+  const generation = storyCorpusGeneration;
+  const details = dashboard.details || {};
+  const tickers = Object.keys(details).filter((instrumentId) => details[instrumentId]?.detail_path);
+  const collected = {};
+  storyRnsPromise = mapBounded(tickers, INSTRUMENT_FETCH_CONCURRENCY, async (instrumentId) => {
+    const rows = storyRnsRows(await loadInstrumentDetailCached(instrumentId));
+    if (rows && generation === storyCorpusGeneration) collected[instrumentId] = rows;
+  }).then(() => {
+    // A stale pass never becomes the shared cache: the caller sees an empty
+    // result and the next read starts again against the current dataset.
+    if (generation !== storyCorpusGeneration) return {};
+    storyRnsCache = collected;
+    return collected;
+  }).finally(() => {
+    if (generation === storyCorpusGeneration) storyRnsPromise = null;
+  });
+  return storyRnsPromise;
+}
+/* @story-loader:end */
 
 function storyMonthIndex(iso) {
   const date = new Date(`${iso}T00:00:00Z`);
   if (Number.isNaN(date.valueOf())) return null;
   return date.getUTCFullYear() * 12 + date.getUTCMonth();
-}
-
-async function storyRnsByTicker() {
-  if (storyRnsCache) return storyRnsCache;
-  const collected = {};
-  for (const [instrumentId, reference] of Object.entries(dashboard.details || {})) {
-    if (!reference?.detail_path) continue;
-    let detail = instrumentDetails.get(instrumentId);
-    if (detail === undefined) {
-      const result = await fetchInstrumentDetail(reference.detail_path);
-      detail = result.status === "AVAILABLE" ? result.detail : null;
-      if (detail) instrumentDetails.set(instrumentId, detail);
-    }
-    const rows = detail?.instrument_detail?.rns;
-    if (Array.isArray(rows) && rows.length) collected[instrumentId] = rows;
-  }
-  storyRnsCache = collected;
-  return collected;
 }
 
 function storySummaryFor(ticker) {
@@ -806,7 +880,9 @@ async function fillCompanyStory(instrumentId) {
   try {
     if (!historyData) await ensureHistoryLoaded();
     if (!historyData) return;
-    const rnsByTicker = await storyRnsByTicker();
+    // A company profile needs this company's announcements only. Reading the
+    // whole corpus here is what made the Catalyst Story wait on 200+ files.
+    const rnsByTicker = await rnsByTickerFor([instrumentId]);
     const stories = buildStories(historyData.records || [], rnsByTicker);
     const story = stories.find((item) => item.ticker === instrumentId) || null;
     const asOf = stories.length
@@ -1100,6 +1176,14 @@ async function bootstrap() {
     productDataStatus = dashboardResult.status === "NOT_AVAILABLE" ? "EMPTY" : "CONTRACT_ERROR";
     productDataStatusReason = dashboardResult.reason || "";
   }
+  // A new dataset invalidates every cached instrument payload and any corpus
+  // read still in flight for the previous one.
+  storyCorpusGeneration += 1;
+  storyRnsCache = null;
+  storyRnsPromise = null;
+  instrumentDetailPromises.clear();
+  instrumentDetails.clear();
+  instrumentFailures.clear();
   if (productDataStatusReason) {
     try { console.warn(`[crashdash] product feed unavailable: ${productDataStatusReason}`); } catch { /* never break the page */ }
   }
