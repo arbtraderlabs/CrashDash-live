@@ -1,5 +1,5 @@
 /** Story-first presentation shared by current-data company Catalyst surfaces. */
-import { formatQuotePrice } from "./browser.js?v=20261020T160806Z";
+import { formatQuotePrice } from "./browser.js?v=20261020T190339Z";
 const safeExternalUrl = (value) => typeof value === "string" && /^https:\/\//i.test(value) ? value : "";
 const storyScrollBehavior = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 
