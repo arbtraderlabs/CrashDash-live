@@ -1,7 +1,7 @@
 /* Static-contract validation for the application shell's data artifacts. */
 
-import { loadBundle } from "./browser.js?v=20261021T160337Z";
-import { normaliseDashboard, normaliseRealBundle, normaliseInstrumentDetail, isInstrumentContractPayload } from "./real_contract.js?v=20261021T160337Z";
+import { loadBundle } from "./browser.js?v=20261021T190330Z";
+import { normaliseDashboard, normaliseRealBundle, normaliseInstrumentDetail, isInstrumentContractPayload } from "./real_contract.js?v=20261021T190330Z";
 
 export { normaliseDashboard, normaliseRealBundle, normaliseInstrumentDetail, isInstrumentContractPayload };
 
