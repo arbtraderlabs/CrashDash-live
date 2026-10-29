@@ -876,11 +876,11 @@
         try {
           if (typeof input === "string" || input instanceof URL) {
             var url = new URL(String(input), window.location.href);
-            url.searchParams.set("v", "20261029T100344Z");
+            url.searchParams.set("v", "20261029T140410Z");
             input = url.toString();
           } else if (input && typeof input === "object" && "url" in input) {
             var request = new URL(String(input.url), window.location.href);
-            request.searchParams.set("v", "20261029T100344Z");
+            request.searchParams.set("v", "20261029T140410Z");
             input = request.toString();
           }
           init = Object.assign({}, init, { cache: "no-store" });
@@ -889,6 +889,6 @@
       };
     })();
   </script>
-  <script type="module" src="./shell.js?v=20261029T100344Z"></script>
+  <script type="module" src="./shell.js?v=20261029T140410Z"></script>
 </body>
 </html>
