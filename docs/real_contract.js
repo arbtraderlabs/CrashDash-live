@@ -1,4 +1,4 @@
-import { loadBundle } from "./browser.js?v=20261030T170348Z";
+import { loadBundle } from "./browser.js?v=20261030T200333Z";
 
 const MONTH_INDEX = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
