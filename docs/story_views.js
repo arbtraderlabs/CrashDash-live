@@ -15,8 +15,8 @@
  *  - No future milestone is fabricated. Future periods are not drawn at all.
  */
 
-import { escapeHtml, humanDate, safeExternalUrl } from "./browser.js?v=20261112T100400Z";
-import { normaliseEventDate } from "./shell_views.js?v=20261112T100400Z";
+import { escapeHtml, humanDate, safeExternalUrl } from "./browser.js?v=20261112T140401Z";
+import { normaliseEventDate } from "./shell_views.js?v=20261112T140401Z";
 
 export const QUARTER_COUNT = 4;
 
