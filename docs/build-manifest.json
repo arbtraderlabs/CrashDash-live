@@ -1,23 +1,23 @@
 {
-  "generated_at": "2026-11-23T10:09:33.123537+00:00",
+  "generated_at": "2026-11-23T14:08:05.125277+00:00",
   "pipeline_version": "1.0.0",
   "source_mode": "local",
-  "source_identifier": "market-cycle-2026-11-23-1000-web",
+  "source_identifier": "market-cycle-2026-11-23-1400-web",
   "source_sha": null,
   "publication_repo_sha": "671b00a57ba73a72d4800461551f21c0c0101462",
   "publisher_image_id": "sha256:7121af252a83dfcf37e09592e9f261083ccef5c9f7f0f6a39e8ec862d356b0f8",
-  "candidate_id": "market-cycle-2026-11-23-1000-web",
-  "canonical_run_id": "market-cycle-2026-11-23-1000",
-  "candidate_generated_at": "2026-11-23T10:03:30.078222Z",
+  "candidate_id": "market-cycle-2026-11-23-1400-web",
+  "canonical_run_id": "market-cycle-2026-11-23-1400",
+  "candidate_generated_at": "2026-11-23T14:03:47.541591Z",
   "current_signal_count": 48,
-  "historical_event_count": 4068,
+  "historical_event_count": 4070,
   "instrument_count": 274,
   "file_count": 290,
-  "total_bytes": 58660864,
+  "total_bytes": 58666101,
   "artifact_sha256": {
-    "data/dashboard.json": "c0cec9fe012ee8c9ba53de73436363c55fc7a0b8ea621255cf5775dfa2c56803",
+    "data/dashboard.json": "750c8b86ff546b810f4960a66cf59dffb09b77f683e1ff39d166a35ff2f4027e",
     "data/beginner.json": "54db92794224db871f72b0350fd6b51b854c4e09e6e311920210ed294b21116f",
     "data/pro.json": "ef11422b592ed1fecf3dcc88ccc07bed311886afd633b0abd9f546f6772fb261",
-    "data/history.json": "122186121de283e34daf56e6ec85d450cbb766b58de112ad1b3ad9331f72281f"
+    "data/history.json": "ca52e2c744a9fc71d0c1457a7408866d6319cba1bcc2e9d054f97684a2585c19"
   }
 }
